@@ -1,19 +1,24 @@
 ---
 name: confluence-search
-description: Search SLAC Confluence live using CQL (Confluence Query Language) via the REST search API. Covers the whole instance — 207 spaces, ~57k pages — not just the exported PSDM subset. Use for questions about LCLS docs, psana, AMI, smalldata_tools, detectors, DAQ, experiment procedures, meeting notes, or any SLAC wiki content; also for "who wrote/changed X", "what changed recently", "find the page about X".
+description: Search SLAC Confluence live using CQL (Confluence Query Language) via the REST search API. Covers every space your account can see (~200 spaces, tens of thousands of pages), not just the exported PSDM subset. Use for questions about LCLS docs, psana, AMI, smalldata_tools, detectors, DAQ, experiment procedures, meeting notes, or any SLAC wiki content; also for "who wrote/changed X", "what changed recently", "find the page about X".
 ---
 
 # Confluence live search (CQL)
 
 Query `confluence.slac.stanford.edu` directly. Unlike the SQLite snapshot at
 `/sdf/group/lcls/ds/dm/apps/dev/data/confluence-doc/lcls-docs.db` (1,364 docs,
-PSDM + PSDMInternal only, rebuilt nightly), this searches **everything the
-token can see: 207 spaces, ~57,700 pages, always current**.
+PSDM + PSDMInternal only, rebuilt nightly), this searches **every space the
+user's own account can see, always current** — around 200 spaces and tens of
+thousands of pages for a typical LCLS account.
 
-## Setup
+Results are filtered by the token owner's permissions, so coverage differs
+between users. `cqlsearch.py whoami` says which identity is in play.
 
-None. The script carries PEP 723 inline metadata and depends only on the standard
-library, so all three of these work with no venv and no install:
+## Running the script
+
+No venv, no `pip install`, no dependencies — the script carries PEP 723 inline
+metadata and uses only the standard library, so all three of these work. (A
+token is the one thing you do need; see **Auth** below.)
 
 ```bash
 CQL="$SKILL_DIR/scripts/cqlsearch.py"                 # see below
@@ -32,11 +37,23 @@ CQL=~/.claude/skills/confluence-search/scripts/cqlsearch.py
 Examples below use `uv run`. Copy `cqlsearch.py` anywhere you like — it is
 standard-library-only and has no repo-relative dependencies.
 
-Auth defaults to the SLAC token at
-`/sdf/group/lcls/ds/dm/apps/dev/env/confluence.dat` (a Confluence Data Center
-personal access token, sent as `Authorization: Bearer`). Override with
-`CONFLUENCE_TOKEN` or `CONFLUENCE_TOKEN_FILE`; point `CONFLUENCE_URL` at a
-different instance if needed.
+## Auth
+
+Each user needs their own personal access token. It is resolved in this order:
+
+1. `$CONFLUENCE_TOKEN`
+2. `$CONFLUENCE_TOKEN_FILE`
+3. `~/.config/confluence-search/token` — the default
+
+There is deliberately **no shared fallback path**, so a central install never
+authenticates everyone as one account. If the token is missing the script prints
+setup instructions; if it is group- or world-readable the script refuses to use
+it. `CONFLUENCE_URL` points at a different instance.
+
+If a command fails with a token error, tell the user to run `install.sh --token`
+and mint a token at
+`https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action`.
+**Do not** try to read, print, or guess a token yourself.
 
 ## Commands
 
@@ -45,7 +62,8 @@ different instance if needed.
 | `text "<words>"` | Free-text search. Builds the CQL for you. **Start here.** |
 | `search "<cql>"` | A raw CQL query when you need full control. |
 | `page <id\|url\|title>` | Fetch one page's full body as HTML. |
-| `spaces` | List the 207 visible spaces (find the right space key). |
+| `spaces` | List the spaces this account can see (find the right space key). |
+| `whoami` | Which identity the token belongs to. One cheap call; good first check. |
 
 ### text — the common case
 

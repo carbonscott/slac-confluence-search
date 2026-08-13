@@ -12,8 +12,11 @@ Standard library only, so it runs either way:
   python3 cqlsearch.py page 146707279                       # no uv needed
   uv run cqlsearch.py spaces
 
-Auth: Confluence Data Center personal access token (Bearer), read from
-$CONFLUENCE_TOKEN or the file at $CONFLUENCE_TOKEN_FILE.
+Auth: a Confluence Data Center personal access token (Bearer), resolved in
+order from $CONFLUENCE_TOKEN, $CONFLUENCE_TOKEN_FILE, then
+~/.config/confluence-search/token. Per-user by design — there is no shared
+default, so a central install never authenticates everyone as one account.
+Run `cqlsearch.py whoami` to see which identity you are using.
 """
 from __future__ import annotations
 
@@ -29,9 +32,42 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+try:
+    import pwd                      # unix only; absent on Windows
+except ImportError:                 # pragma: no cover
+    pwd = None
+
 BASE = os.environ.get("CONFLUENCE_URL", "https://confluence.slac.stanford.edu")
-TOKEN_FILE = os.environ.get(
-    "CONFLUENCE_TOKEN_FILE", "/sdf/group/lcls/ds/dm/apps/dev/env/confluence.dat")
+PAT_URL = f"{BASE}/plugins/personalaccesstokens/usertokens.action"
+
+
+def home_dir() -> str:
+    """The invoking user's home.
+
+    $HOME is inherited, so it lies under sudo, cron, and service accounts. The
+    passwd database does not.
+    """
+    if pwd is not None:
+        try:
+            return pwd.getpwuid(os.getuid()).pw_dir
+        except KeyError:
+            pass
+    return os.path.expanduser("~")
+
+
+def default_token_file() -> str:
+    """Per-user, by construction — never a shared path.
+
+    A shared default would mean every user of a central install silently
+    authenticating as whoever owns that file, seeing that account's view of the
+    wiki. Deliberately absent: point CONFLUENCE_TOKEN_FILE at a shared file if
+    you actually want that.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home_dir(), ".config")
+    return os.path.join(xdg, "confluence-search", "token")
+
+
+TOKEN_FILE = os.environ.get("CONFLUENCE_TOKEN_FILE") or default_token_file()
 
 # S3DF nodes trust SLAC's internal CA through the system bundle; the uv-managed
 # pythons look for /etc/ssl/cert.pem instead and fail verification without this.
@@ -54,16 +90,58 @@ def ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=cafile)
 
 
+SETUP_HELP = f"""\
+error: no Confluence token.
+
+Every user needs their own — results are filtered by *your* wiki permissions.
+
+  1. mint one (browser; there is no API for the first token, this instance
+     has basic auth disabled):
+       {PAT_URL}
+  2. install it:
+       install.sh --token          # prompts, writes the file with mode 600
+     or by hand:
+       mkdir -p {os.path.dirname(TOKEN_FILE)}
+       (umask 077; cat > {TOKEN_FILE})   # paste, then Ctrl-D
+
+Or set CONFLUENCE_TOKEN / CONFLUENCE_TOKEN_FILE to override."""
+
+
+def token_source() -> str:
+    """Where the token came from. Never returns the token itself."""
+    if os.environ.get("CONFLUENCE_TOKEN"):
+        return "$CONFLUENCE_TOKEN"
+    return TOKEN_FILE
+
+
+def read_token_file(path: str) -> str:
+    try:
+        mode = os.stat(path).st_mode
+    except OSError as e:
+        sys.exit(f"error: cannot stat {path}: {e}")
+    if mode & 0o077:
+        # Group trees here are setgid and group-writable, so an inherited umask
+        # leaks the token easily. Fail at setup rather than quietly.
+        sys.exit(f"error: {path} is readable by group or others "
+                 f"(mode {mode & 0o777:03o}).\n"
+                 f"  fix: chmod 600 {path}")
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError as e:
+        sys.exit(f"error: cannot read {path}: {e}")
+
+
 def get_token() -> str:
     tok = os.environ.get("CONFLUENCE_TOKEN")
     if tok:
         return tok.strip()
-    try:
-        with open(TOKEN_FILE) as f:
-            return f.read().strip()
-    except OSError as e:
-        sys.exit(f"error: no token. Set CONFLUENCE_TOKEN or fix "
-                 f"CONFLUENCE_TOKEN_FILE ({TOKEN_FILE}): {e}")
+    if not os.path.exists(TOKEN_FILE):
+        sys.exit(SETUP_HELP)
+    tok = read_token_file(TOKEN_FILE)
+    if not tok:
+        sys.exit(f"error: {TOKEN_FILE} is empty.\n\n{SETUP_HELP}")
+    return tok
 
 
 class Client:
@@ -97,6 +175,12 @@ class Client:
                     continue
                 if e.code == 400:
                     sys.exit(f"CQL error (HTTP 400): {extract_message(body)}")
+                if e.code == 401:
+                    sys.exit(f"error: HTTP 401 — token rejected. It is invalid, "
+                             f"expired, or revoked.\n"
+                             f"  token came from: {token_source()}\n"
+                             f"  mint a new one:  {PAT_URL}\n"
+                             f"  then re-run:     install.sh --token")
                 sys.exit(f"HTTP {e.code} for {path}: {extract_message(body)}")
             except urllib.error.URLError as e:
                 sys.exit(f"network/TLS error for {path}: {e.reason}\n"
@@ -283,6 +367,17 @@ def cmd_page(args) -> int:
     return 0
 
 
+def cmd_whoami(args) -> int:
+    """One cheap call that proves the token works and says who it belongs to."""
+    me = Client(verbose=args.verbose).get("/rest/api/user/current", {})
+    print(f"{me.get('displayName') or '?'} <{me.get('username') or '?'}>")
+    print(f"  instance: {BASE}")
+    print(f"  token:    {token_source()}")
+    print("  note:     search results are filtered by your own permissions —")
+    print("            another account sees a different set of spaces.")
+    return 0
+
+
 def cmd_spaces(args) -> int:
     client = Client(verbose=args.verbose)
     start, rows = 0, []
@@ -353,6 +448,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "format, json=full API response")
     g.add_argument("--out", help="write to file instead of stdout")
     g.set_defaults(func=cmd_page)
+
+    w = sub.add_parser("whoami", help="who this token authenticates as")
+    w.set_defaults(func=cmd_whoami)
 
     sp = sub.add_parser("spaces", help="list spaces this token can see")
     sp.add_argument("--type", default="global", choices=["global", "personal"])
