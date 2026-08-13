@@ -55,9 +55,29 @@ authenticates everyone as one account. If the token is missing the script prints
 setup instructions; if it is group- or world-readable the script refuses to use
 it. `CONFLUENCE_URL` points at a different instance.
 
-If a command fails with a token error, stop and tell the user to set one up
-themselves. The command ships in this skill directory, so it works even for
-someone who only ever received the deployed skill:
+### Never announce a missing token you have not observed
+
+**Do not tell the user to set up a token unless a command you actually ran just
+failed with a token error.** Most users already have one, and being told to redo
+setup they completed is worse than useless — it makes them doubt a working
+install. The instructions below are a *reaction* to a failure, never a
+precondition to check first.
+
+If you are unsure whether auth works, do not guess and do not read it off this
+file. Run one cheap command and look at the output:
+
+```bash
+uv run --script "$CQL" whoami
+```
+
+A name and email means auth is fine — proceed with the real query. Only if a
+command exits with an error mentioning the token do the following apply.
+
+### When a command really did fail on the token
+
+Stop and tell the user to set one up themselves. The command ships in this skill
+directory, so it works even for someone who only ever received the deployed
+skill:
 
 ```bash
 $SKILL_DIR/scripts/confluence-login           # prompts, hidden, writes mode 600
@@ -67,6 +87,11 @@ $SKILL_DIR/scripts/confluence-login --force   # replace an expired or wrong toke
 They mint the token first, in a browser, at
 `https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action`
 — there is no API for the first one.
+
+Quote the error you actually got. If it was HTTP 401 the token exists but is
+invalid, expired, or revoked, and they need `--force`; if it was "no Confluence
+token" there is nothing installed yet. Those are different problems and the
+`--force` flag is the difference.
 
 **Do not** read, print, guess, or type a token yourself, and do not run
 `confluence-login` for the user — it prompts them, deliberately, so the secret
