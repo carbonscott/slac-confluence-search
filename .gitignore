@@ -5,3 +5,7 @@ __pycache__/
 
 # Agent-to-agent scaffolding, not part of the shareable skill.
 HANDOFF.md
+
+# One-off probes that validated the approach. Their results are written up in
+# docs/findings.md; the scripts themselves are not worth shipping to users.
+experiments/

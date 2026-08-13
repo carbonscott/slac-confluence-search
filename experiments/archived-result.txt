@@ -1,5 +1,0 @@
-waiting out the rate limiter...
-  default (implicit status)        totalSize=233
-  status = current                 totalSize={'error': 400, 'body': '{"statusCode":400,"data":{"authorized":false,"valid":true,"allowedInReadOnlyMode":true,"errors":[],"successful":false},"message":"No field exists with the name: \'status\' Did you mean one of : space, s'}
-  status = archived                totalSize={'error': 400, 'body': '{"statusCode":400,"data":{"authorized":false,"valid":true,"allowedInReadOnlyMode":true,"errors":[],"successful":false},"message":"No field exists with the name: \'status\' Did you mean one of : space, s'}
-  status in (...)                  totalSize={'error': 400, 'body': '{"statusCode":400,"data":{"authorized":false,"valid":true,"allowedInReadOnlyMode":true,"errors":[],"successful":false},"message":"No field exists with the name: \'status\' Did you mean one of : space, s'}

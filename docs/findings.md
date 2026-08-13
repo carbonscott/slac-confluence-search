@@ -3,6 +3,10 @@
 Why this skill exists, and what was measured along the way. All numbers taken
 2026-08-12 against `confluence.slac.stanford.edu`.
 
+The probe scripts that produced them are not in this repo — they were one-off
+throwaways against a rate-limited instance, and the results they captured are
+written up below rather than left to be re-run.
+
 The question: can we query SLAC Confluence **live** instead of ETL-ing it into
 SQLite first? Yes — Confluence exposes a REST search API driven by CQL
 (Confluence Query Language), it responds in 50–300 ms, and it covers far more
@@ -129,7 +133,6 @@ venv or a `requirements.txt`:
 
 ```bash
 uv run docs/html2md.py       # deps declared inline: markdownify, beautifulsoup4
-uv run experiments/probe.py  # stdlib only
 ```
 
 `cqlsearch.py` is deliberately stdlib-only so it can be copied anywhere. That is

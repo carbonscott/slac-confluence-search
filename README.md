@@ -158,7 +158,6 @@ install.sh                           deploys the skill
 docs/token-setup/                    the illustrated token walkthrough
 docs/findings.md                     how it works, what was measured, gotchas
 docs/md/, docs/raw/                  Atlassian's query-syntax docs, offline
-experiments/                         the probes that validated the approach
 ```
 
 `claude/` and `opencode/` hold **identical, duplicated** content — the layout the
