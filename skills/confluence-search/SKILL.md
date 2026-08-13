@@ -32,8 +32,8 @@ declares `requires-python = ">=3.9"` and uv provisions that automatically; the
 system python on SLAC login nodes is 3.6 and cannot parse the file at all
 (`SyntaxError: future feature annotations is not defined`).
 
-`$SKILL_DIR` is the directory holding this `SKILL.md`. When installed with the
-repo's `install.sh` that is `~/.claude/skills/confluence-search`:
+`$SKILL_DIR` is the directory holding this `SKILL.md` — wherever this skill was
+deployed, usually `~/.claude/skills/confluence-search`:
 
 ```bash
 CQL=~/.claude/skills/confluence-search/scripts/cqlsearch.py
@@ -55,10 +55,23 @@ authenticates everyone as one account. If the token is missing the script prints
 setup instructions; if it is group- or world-readable the script refuses to use
 it. `CONFLUENCE_URL` points at a different instance.
 
-If a command fails with a token error, tell the user to run `install.sh --token`
-and mint a token at
-`https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action`.
-**Do not** try to read, print, or guess a token yourself.
+If a command fails with a token error, stop and tell the user to set one up
+themselves. The token step lives in the script, so it works even for a user who
+only ever received this skill directory:
+
+```bash
+uv run --script "$CQL" login          # prompts, input hidden, writes mode 600
+uv run --script "$CQL" login --force  # replace an expired or wrong token
+```
+
+They mint the token first, in a browser, at
+`https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action`
+— there is no API for the first one. A user who has a clone of the source repo
+can run `install.sh --token-only` instead; it calls exactly this command.
+
+**Do not** read, print, guess, or type a token yourself, and do not run `login`
+for the user — it prompts them, deliberately, so the secret never passes through
+you or through a command line.
 
 ## Commands
 
@@ -69,6 +82,7 @@ and mint a token at
 | `page <id\|url\|title>` | Fetch one page's full body as HTML. |
 | `spaces` | List the spaces this account can see (find the right space key). |
 | `whoami` | Which identity the token belongs to. One cheap call; good first check. |
+| `login` | The user installs their own token. See **Auth** — you never run this. |
 
 ### text — the common case
 

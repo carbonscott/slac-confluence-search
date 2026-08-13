@@ -9,18 +9,20 @@ Standard library only, so it runs either way:
 
   uv run cqlsearch.py search 'space = PSDM and text ~ "psana"' --limit 10
   ./cqlsearch.py text "detector calibration" --space PSDM   # uv via shebang
-  python3 cqlsearch.py page 146707279                       # no uv needed
+  python3 cqlsearch.py page 146707279                       # python3 >= 3.9 only
   uv run cqlsearch.py spaces
 
 Auth: a Confluence Data Center personal access token (Bearer), resolved in
 order from $CONFLUENCE_TOKEN, $CONFLUENCE_TOKEN_FILE, then
 ~/.config/confluence-search/token. Per-user by design — there is no shared
 default, so a central install never authenticates everyone as one account.
-Run `cqlsearch.py whoami` to see which identity you are using.
+Run `cqlsearch.py login` to install your token, `whoami` to see which identity
+you are using.
 """
 from __future__ import annotations
 
 import argparse
+import getpass
 import html
 import json
 import os
@@ -39,6 +41,12 @@ except ImportError:                 # pragma: no cover
 
 BASE = os.environ.get("CONFLUENCE_URL", "https://confluence.slac.stanford.edu")
 PAT_URL = f"{BASE}/plugins/personalaccesstokens/usertokens.action"
+
+# Setup instructions must point at *this* file, not at install.sh: install.sh
+# lives in the repo, and a user of a central deployment has only the deployed
+# skill directory (SKILL.md, reference/, scripts/). Absolute, so the hint stays
+# correct after the reader cd's somewhere else.
+SELF = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else "cqlsearch.py"
 
 
 def home_dir() -> str:
@@ -90,6 +98,15 @@ def ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context(cafile=cafile)
 
 
+MINT_HELP = f"""\
+You need a Confluence personal access token of your own — search results are
+filtered by *your* wiki permissions, so this is not a credential anyone can
+share with you.
+
+There is no API for the first one (this instance has basic auth disabled), so
+mint it in a browser, and set an expiry — tokens here default to never expiring:
+    {PAT_URL}"""
+
 SETUP_HELP = f"""\
 error: no Confluence token.
 
@@ -98,11 +115,11 @@ Every user needs their own — results are filtered by *your* wiki permissions.
   1. mint one (browser; there is no API for the first token, this instance
      has basic auth disabled):
        {PAT_URL}
-  2. install it:
-       install.sh --token          # prompts, writes the file with mode 600
-     or by hand:
-       mkdir -p {os.path.dirname(TOKEN_FILE)}
-       (umask 077; cat > {TOKEN_FILE})   # paste, then Ctrl-D
+  2. install it — prompts without echoing, writes {TOKEN_FILE} mode 600:
+       uv run --script {SELF} login
+
+That is the whole setup. From a clone of the repo, `install.sh --token` does the
+same thing and links the skill as well.
 
 Or set CONFLUENCE_TOKEN / CONFLUENCE_TOKEN_FILE to override."""
 
@@ -147,9 +164,11 @@ def get_token() -> str:
 class Client:
     """Thin GET client with 429 backoff. The SLAC instance rate-limits."""
 
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, token: str = ""):
         self.ctx = ssl_context()
-        self.token = get_token()
+        # `login` passes the token it just wrote, so its check tests that token
+        # and not whatever $CONFLUENCE_TOKEN would otherwise win with.
+        self.token = token or get_token()
         self.verbose = verbose
 
     def get(self, path: str, params: dict, tries: int = 5) -> dict:
@@ -180,7 +199,9 @@ class Client:
                              f"expired, or revoked.\n"
                              f"  token came from: {token_source()}\n"
                              f"  mint a new one:  {PAT_URL}\n"
-                             f"  then re-run:     install.sh --token")
+                             f"  then install it: {SELF} login --force\n"
+                             f"                   (or install.sh --token, from "
+                             f"a clone of the repo)")
                 sys.exit(f"HTTP {e.code} for {path}: {extract_message(body)}")
             except urllib.error.URLError as e:
                 sys.exit(f"network/TLS error for {path}: {e.reason}\n"
@@ -367,14 +388,107 @@ def cmd_page(args) -> int:
     return 0
 
 
+def print_identity(me: dict, source: str) -> None:
+    print(f"{me.get('displayName') or '?'} <{me.get('username') or '?'}>")
+    print(f"  instance: {BASE}")
+    print(f"  token:    {source}")
+    print("  note:     search results are filtered by your own permissions —")
+    print("            another account sees a different set of spaces.")
+
+
 def cmd_whoami(args) -> int:
     """One cheap call that proves the token works and says who it belongs to."""
     me = Client(verbose=args.verbose).get("/rest/api/user/current", {})
-    print(f"{me.get('displayName') or '?'} <{me.get('username') or '?'}>")
-    print(f"  instance: {BASE}")
-    print(f"  token:    {token_source()}")
-    print("  note:     search results are filtered by your own permissions —")
-    print("            another account sees a different set of spaces.")
+    print_identity(me, token_source())
+    return 0
+
+
+def collect_token(from_file: str) -> str:
+    """The token, from a file, a pipe, or a hidden prompt. Never echoed."""
+    if from_file:
+        try:
+            with open(from_file) as f:
+                raw = f.read()
+        except OSError as e:
+            sys.exit(f"error: cannot read {from_file}: {e}")
+    elif not sys.stdin.isatty():
+        # `pass show confluence | cqlsearch.py login` — and how install.sh
+        # forwards a piped token.
+        raw = sys.stdin.read()
+    else:
+        print(MINT_HELP)
+        print()
+        try:
+            raw = getpass.getpass("Paste token (input hidden, Enter when done): ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            sys.exit("error: aborted; nothing was written.")
+    tok = raw.strip()
+    if not tok:
+        sys.exit("error: empty token; nothing was written.")
+    return tok
+
+
+def write_token_file(path: str, token: str, force: bool) -> None:
+    """Write the token so it is never, even briefly, readable by anyone else.
+
+    O_CREAT|O_EXCL with mode 600 rather than write-then-chmod: on a shared
+    filesystem the gap between those two is a window in which the token is
+    world-readable. --force unlinks first so the new file really is created
+    here — O_CREAT leaves an existing file's mode alone.
+    """
+    if os.path.lexists(path) and not force:
+        sys.exit(f"error: {path} already exists; nothing was written.\n"
+                 f"  re-run with --force to replace it "
+                 f"(the old token is not recoverable afterwards).")
+    old_umask = os.umask(0o077)          # covers the parent dirs makedirs creates
+    try:
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, mode=0o700, exist_ok=True)
+        if os.path.lexists(path):
+            os.unlink(path)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(token + "\n")
+    except OSError as e:
+        sys.exit(f"error: cannot write {path}: {e}")
+    finally:
+        os.umask(old_umask)
+
+
+def cmd_login(args) -> int:
+    """Install this user's token.
+
+    Lives in this script rather than only in install.sh because this script is
+    the one file that exists wherever the skill is deployed; install.sh stays
+    behind in the repo, which end users of a central deployment never see.
+    """
+    token = collect_token(args.from_file)
+    write_token_file(TOKEN_FILE, token, args.force)
+    # flush: the verify call below writes to stderr, and a piped install log
+    # otherwise shows the failure before the write it refers to.
+    print(f"wrote {TOKEN_FILE} (mode 600)", flush=True)
+
+    if os.environ.get("CONFLUENCE_TOKEN"):
+        print("warning: $CONFLUENCE_TOKEN is set and takes precedence over the "
+              "file.\n         Unset it, or the token just written is ignored.",
+              file=sys.stderr)
+
+    if args.no_verify:
+        return 0
+    try:
+        me = Client(verbose=args.verbose, token=token).get("/rest/api/user/current", {})
+    except SystemExit as e:      # Client.get() exits on HTTP/TLS failure
+        print(f"\n{e}", file=sys.stderr)
+        print(f"\nwarning: {TOKEN_FILE} was written, but the check above failed.\n"
+              f"         The token may be wrong (a truncated paste is the usual\n"
+              f"         cause) — or this instance rate-limited the check; it\n"
+              f"         does that readily. Try `{SELF} whoami` in a minute.",
+              file=sys.stderr)
+        return 1
+    print()
+    print_identity(me, TOKEN_FILE)
     return 0
 
 
@@ -448,6 +562,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "format, json=full API response")
     g.add_argument("--out", help="write to file instead of stdout")
     g.set_defaults(func=cmd_page)
+
+    lg = sub.add_parser("login", help=f"install your token into {TOKEN_FILE}")
+    lg.add_argument("--from", dest="from_file", metavar="FILE",
+                    help="read the token from FILE instead of prompting")
+    lg.add_argument("--force", action="store_true",
+                    help="replace an existing token file")
+    lg.add_argument("--no-verify", action="store_true",
+                    help="skip the one live call that confirms the token works")
+    lg.set_defaults(func=cmd_login)
 
     w = sub.add_parser("whoami", help="who this token authenticates as")
     w.set_defaults(func=cmd_whoami)
