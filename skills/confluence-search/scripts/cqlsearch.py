@@ -16,8 +16,8 @@ Auth: a Confluence Data Center personal access token (Bearer), resolved in
 order from $CONFLUENCE_TOKEN, $CONFLUENCE_TOKEN_FILE, then
 ~/.config/confluence-search/token. Per-user by design — there is no shared
 default, so a central install never authenticates everyone as one account.
-Run `cqlsearch.py login` to install your token, `whoami` to see which identity
-you are using.
+Run the sibling `confluence-login` to install your token, `whoami` to see which
+identity you are using.
 """
 from __future__ import annotations
 
@@ -47,6 +47,12 @@ PAT_URL = f"{BASE}/plugins/personalaccesstokens/usertokens.action"
 # skill directory (SKILL.md, reference/, scripts/). Absolute, so the hint stays
 # correct after the reader cd's somewhere else.
 SELF = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else "cqlsearch.py"
+
+# The command to hand a user who needs a token. `confluence-login` is a sibling
+# wrapper shipped in the same scripts/ directory; fall back to the subcommand
+# when cqlsearch.py was copied somewhere on its own.
+_WRAPPER = os.path.join(os.path.dirname(SELF), "confluence-login")
+LOGIN_CMD = _WRAPPER if os.path.exists(_WRAPPER) else f"{SELF} login"
 
 
 def home_dir() -> str:
@@ -116,10 +122,10 @@ Every user needs their own — results are filtered by *your* wiki permissions.
      has basic auth disabled):
        {PAT_URL}
   2. install it — prompts without echoing, writes {TOKEN_FILE} mode 600:
-       uv run --script {SELF} login
+       {LOGIN_CMD}
 
-That is the whole setup. From a clone of the repo, `install.sh --token` does the
-same thing and links the skill as well.
+That is the whole setup, and it is yours alone to do: results are filtered by
+your own wiki permissions, so nobody can install this token for you.
 
 Or set CONFLUENCE_TOKEN / CONFLUENCE_TOKEN_FILE to override."""
 
@@ -199,9 +205,7 @@ class Client:
                              f"expired, or revoked.\n"
                              f"  token came from: {token_source()}\n"
                              f"  mint a new one:  {PAT_URL}\n"
-                             f"  then install it: {SELF} login --force\n"
-                             f"                   (or install.sh --token, from "
-                             f"a clone of the repo)")
+                             f"  then install it: {LOGIN_CMD} --force")
                 sys.exit(f"HTTP {e.code} for {path}: {extract_message(body)}")
             except urllib.error.URLError as e:
                 sys.exit(f"network/TLS error for {path}: {e.reason}\n"

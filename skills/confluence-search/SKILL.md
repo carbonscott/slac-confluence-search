@@ -56,22 +56,21 @@ setup instructions; if it is group- or world-readable the script refuses to use
 it. `CONFLUENCE_URL` points at a different instance.
 
 If a command fails with a token error, stop and tell the user to set one up
-themselves. The token step lives in the script, so it works even for a user who
-only ever received this skill directory:
+themselves. The command ships in this skill directory, so it works even for
+someone who only ever received the deployed skill:
 
 ```bash
-uv run --script "$CQL" login          # prompts, input hidden, writes mode 600
-uv run --script "$CQL" login --force  # replace an expired or wrong token
+$SKILL_DIR/scripts/confluence-login           # prompts, hidden, writes mode 600
+$SKILL_DIR/scripts/confluence-login --force   # replace an expired or wrong token
 ```
 
 They mint the token first, in a browser, at
 `https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action`
-— there is no API for the first one. A user who has a clone of the source repo
-can run `install.sh --token-only` instead; it calls exactly this command.
+— there is no API for the first one.
 
-**Do not** read, print, guess, or type a token yourself, and do not run `login`
-for the user — it prompts them, deliberately, so the secret never passes through
-you or through a command line.
+**Do not** read, print, guess, or type a token yourself, and do not run
+`confluence-login` for the user — it prompts them, deliberately, so the secret
+never passes through you or through a command line.
 
 ## Commands
 
@@ -82,7 +81,9 @@ you or through a command line.
 | `page <id\|url\|title>` | Fetch one page's full body as HTML. |
 | `spaces` | List the spaces this account can see (find the right space key). |
 | `whoami` | Which identity the token belongs to. One cheap call; good first check. |
-| `login` | The user installs their own token. See **Auth** — you never run this. |
+
+The sibling `scripts/confluence-login` installs the user's own token. See
+**Auth** — you never run it for them.
 
 ### text — the common case
 

@@ -13,7 +13,7 @@ covers 42× more content than the nightly SQLite snapshot.
 ```
 confluence-search/
 ├── README.md                     this file
-├── install.sh                    deploys the skill; delegates the token step
+├── install.sh                    deploys the skill (never touches tokens)
 ├── docs/
 │   ├── html2md.py                the converter used to produce docs/md
 │   ├── raw/*.html                archived Atlassian pages, verbatim
@@ -27,7 +27,9 @@ confluence-search/
 └── skills/confluence-search/     ← the Claude agent skill
     ├── SKILL.md
     ├── reference/cql-cheatsheet.md
-    └── scripts/cqlsearch.py
+    └── scripts/
+        ├── cqlsearch.py          the implementation
+        └── confluence-login      each user installs their own token
 ```
 
 ## CQL documentation (downloaded here)
@@ -72,21 +74,45 @@ provisions a suitable interpreter from the inline metadata; fall back to a bare
 
 ## Install
 
-There are two jobs here, and they belong to two different people: *deploying the
-skill*, which a maintainer does once, and *installing a token*, which every user
-must do for themselves because results are filtered by their own permissions.
-From your own clone you can do both at once:
+Two jobs, two commands, two different people. *Deploying the skill* is a
+maintainer's job, done once. *Installing a token* is every user's own, and
+cannot be done for them — results are filtered by their own permissions.
 
 ```bash
-./install.sh          # link the skill into ~/.claude/skills/, then set up your token
+./install.sh                                              # 1. deploy the skill
+~/.claude/skills/confluence-search/scripts/confluence-login   # 2. your token
 ```
 
-It links `skills/confluence-search/` into your skills directory, prompts for your
-personal access token, writes it to `~/.config/confluence-search/token` with mode
-600, and makes one live call to confirm it works:
+**`install.sh` deploys and nothing else.** It links `skills/confluence-search/`
+into your skills directory and never touches a credential.
+
+| Flag | Effect |
+|---|---|
+| `--copy` | copy instead of symlinking, for hosts that can't follow the link |
+| `--dir DIR` | a skills directory other than `~/.claude/skills` |
+| `--force` | replace an existing entry at the destination |
+| `--uninstall` | remove the deployed skill (your token is left alone) |
+
+`docs/` and `experiments/` stay in the clone; it refuses to clobber an unrelated
+existing entry unless you pass `--force`.
+
+**`confluence-login` installs a token and nothing else.** It ships inside the
+skill's `scripts/`, so it is there even for someone who was handed the deployed
+skill and never saw this repo — which `install.sh`, sitting in the clone, would
+not be.
+
+| Flag | Effect |
+|---|---|
+| `--from FILE` | read the token from a file instead of prompting |
+| `--force` | replace an existing token |
+| `--no-verify` | skip the one live call that confirms it works |
+
+It prompts without echoing, or reads stdin when it is not a terminal
+(`pass show confluence | confluence-login`). It creates the config directory
+mode 700 and the token file mode 600, refuses to overwrite without `--force`,
+and finishes by naming the identity you just authenticated as:
 
 ```
-linked /home/you/.claude/skills/confluence-search -> /sdf/group/.../skills/confluence-search
 wrote /home/you/.config/confluence-search/token (mode 600)
 
 Cong Wang <cwang31@slac.stanford.edu>
@@ -94,40 +120,9 @@ Cong Wang <cwang31@slac.stanford.edu>
   token:    /home/you/.config/confluence-search/token
 ```
 
-**If all you have is the deployed skill** — someone linked it into your skills
-directory and you never saw this repo — install your token with the script
-itself. `install.sh` stays behind in the clone; `cqlsearch.py` is always there:
-
-```bash
-uv run --script ~/.claude/skills/confluence-search/scripts/cqlsearch.py login
-```
-
-`login` prompts without echoing, or reads stdin when it is not a terminal
-(`pass show confluence | ... login`). It creates the config directory mode 700
-and the token file mode 600, and refuses to overwrite an existing token unless
-you pass `--force`. `--from FILE` reads the token from a file instead of
-prompting; `--no-verify` skips the one live call at the end.
-
-Options to `install.sh`:
-
-| Flag | Effect |
-|---|---|
-| `--token` | (re)install the token, overwriting an existing one. Reads stdin when not a terminal. |
-| `--token-from FILE` | take the token from a file instead of prompting |
-| `--token-only` | the token step and nothing else, for a skill someone already deployed for you |
-| `--no-token` / `--no-verify` | deploy the skill only / skip the live check |
-| `--copy` | copy instead of symlinking, for hosts that can't follow the link |
-| `--dir DIR` | a skills directory other than `~/.claude/skills` |
-| `--force` / `--uninstall` | replace an existing entry / remove the skill (your token stays) |
-
-Every one of those token paths runs `cqlsearch.py login`: `install.sh` picks the
-interpreter (uv first) and calls it. It deliberately carries no second copy of
-the write-a-600-mode-file logic, since the two would drift and only one of them
-ships with the skill.
-
-`install.sh` only touches the skill directory and your token; `docs/` and
-`experiments/` stay in the clone. It refuses to clobber an unrelated existing
-entry unless you pass `--force`.
+Under the hood it calls `cqlsearch.py login`. The implementation lives there
+because that is where the token path is resolved, and a second copy of that
+resolution would eventually write where the search command does not read.
 
 ## Getting a token
 
@@ -136,9 +131,9 @@ permissions, so this is not a credential anyone can share with you.
 
 Mint one in a browser at
 [Profile → Settings → Personal Access Tokens](https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action),
-set an expiry, and paste it when `cqlsearch.py login` (or `install.sh`, which
-calls it) asks. The prompt does not echo, and the token never appears in a
-command line — `ps` is world-readable on shared nodes.
+set an expiry, and paste it when `confluence-login` asks. The prompt does not
+echo, and the token never appears in a command line — `ps` is world-readable on
+shared nodes.
 
 There is no way to automate that first step: the PAT REST API
 (`/rest/pat/latest/tokens`) can create and revoke tokens, but only for a caller
@@ -167,17 +162,18 @@ One clone, many users, two roles. Who runs what:
 git clone <this-repo> /sdf/group/lcls/ds/dm/apps/dev/tools/confluence-search
 CS=/sdf/group/lcls/ds/dm/apps/dev/tools/confluence-search
 
-# maintainer, deploying the skill — no credential is touched
-$CS/install.sh --no-token                      # into their own ~/.claude/skills
-$CS/install.sh --no-token --dir /some/shared/skills
+# deploying the skill — never touches a credential
+$CS/install.sh                          # into ~/.claude/skills
+$CS/install.sh --dir /some/shared/skills
 
 # each user, once: their own token, in their own home
-$CS/install.sh --token-only                    # if they can reach the clone
-uv run --script ~/.claude/skills/confluence-search/scripts/cqlsearch.py login
-                                               # if all they have is the skill
+~/.claude/skills/confluence-search/scripts/confluence-login
 ```
 
-A user who has the clone can still do both at once with a bare `install.sh`.
+The two commands are deliberately disjoint. `install.sh` cannot install a token
+and `confluence-login` cannot deploy a skill, so neither can be run by the wrong
+person by accident. You cannot do the token step for your users in any case:
+results are filtered by whoever's token is in play.
 
 Everyone symlinks the same files, so `git pull` in the central clone updates all
 users at once. Credentials stay per-user because the token path is resolved from
@@ -185,9 +181,10 @@ the invoking account's home directory (via the passwd database, not `$HOME`,
 which is inherited and wrong under `sudo` and cron).
 
 Nothing in the deployed skill directory (`SKILL.md`, `reference/`, `scripts/`)
-depends on the clone, which is why the token step had to live in `cqlsearch.py`:
-a user handed only that directory cannot run `install.sh`, and any error message
-pointing them at it would be a dead end.
+depends on the clone. That is why `confluence-login` ships inside `scripts/`
+rather than sitting next to `install.sh`: a user handed only the deployed skill
+cannot reach the repo, and an instruction pointing them at it would be a dead
+end.
 
 Two things to plan for:
 
