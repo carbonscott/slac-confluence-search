@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+*.swp
+
+# Agent-to-agent scaffolding, not part of the shareable skill.
+HANDOFF.md
