@@ -62,9 +62,13 @@ uv run experiments/probe.py            # stdlib only
 | `docs/html2md.py` | `markdownify`, `beautifulsoup4` |
 | everything else | none — standard library |
 
-`cqlsearch.py` is deliberately stdlib-only so it also runs as plain
-`python3 cqlsearch.py …` on a host without uv. Copy it anywhere; it has no
-repo-relative dependencies.
+`cqlsearch.py` is deliberately stdlib-only, so it needs no venv and can be
+copied anywhere — it has no repo-relative dependencies. That is not the same as
+running under *any* python: it declares `requires-python = ">=3.9"`, and the
+system python on SLAC login nodes is **3.6**, which cannot parse the file
+(`SyntaxError: future feature annotations is not defined`). Prefer `uv`, which
+provisions a suitable interpreter from the inline metadata; fall back to a bare
+`python3` only when you know it is 3.9 or newer.
 
 ## Install
 

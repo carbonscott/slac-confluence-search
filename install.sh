@@ -150,30 +150,50 @@ else
   echo "wrote $TOKEN_FILE (mode $(stat -c %a "$TOKEN_FILE" 2>/dev/null || echo 600))"
 fi
 
+# --- pick an interpreter ----------------------------------------------------
+# uv is the supported path: the script's PEP 723 metadata pins python>=3.9 and
+# uv provisions exactly that. A bare `python3` is often the system one — 3.6 on
+# these login nodes — which cannot even parse the script.
+RUNNER=""
+if command -v uv >/dev/null 2>&1; then
+  RUNNER="uv run --script"
+elif command -v python3 >/dev/null 2>&1 &&
+     python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+  RUNNER="python3"
+fi
+
+if [ -z "$RUNNER" ]; then
+  echo
+  echo "warning: no usable interpreter found."
+  echo "         uv is not installed, and python3 is $(python3 -V 2>&1 || echo absent),"
+  echo "         but this script needs python >= 3.9."
+  echo "         Install uv (https://docs.astral.sh/uv/) — it fetches its own python."
+  VERIFY=0
+fi
+
 # --- prove it works ---------------------------------------------------------
 if [ "$VERIFY" -eq 1 ] && have_token; then
   echo
-  if CONFLUENCE_TOKEN_FILE="$TOKEN_FILE" python3 "$SRC/scripts/cqlsearch.py" whoami; then
+  # RUNNER is deliberately unquoted: it may be "uv run --script".
+  if CONFLUENCE_TOKEN_FILE="$TOKEN_FILE" $RUNNER "$SRC/scripts/cqlsearch.py" whoami; then
     :
   else
-    echo "install.sh: the token did not work — see the error above." >&2
-    echo "            (rate limits can also cause this; try again in a minute)" >&2
+    echo "install.sh: could not verify the token — see the error above." >&2
+    echo "            The skill and token are installed; only the check failed." >&2
+    echo "            (rate limits can cause this; try again in a minute)" >&2
     exit 1
   fi
 fi
 
 # --- environment notes ------------------------------------------------------
-if command -v uv >/dev/null 2>&1; then
-  if [ -z "${UV_CACHE_DIR:-}" ]; then
-    echo
-    echo "note: UV_CACHE_DIR is unset, so uv caches under ~/.cache/uv."
-    echo "      On quota'd home directories set UV_CACHE_DIR=/tmp/uv-cache-\$USER."
-  fi
-else
+if command -v uv >/dev/null 2>&1 && [ -z "${UV_CACHE_DIR:-}" ]; then
   echo
-  echo "note: uv not found. cqlsearch.py is standard-library-only, so"
-  echo "      'python3 $DEST/scripts/cqlsearch.py ...' works without it."
+  echo "note: UV_CACHE_DIR is unset, so uv caches under ~/.cache/uv."
+  echo "      On quota'd home directories set UV_CACHE_DIR=/tmp/uv-cache-\$USER."
 fi
 
-echo
-echo "done. Try:  python3 $DEST/scripts/cqlsearch.py text 'detector calibration' --limit 5"
+if [ -n "$RUNNER" ]; then
+  echo
+  echo "done. Try:"
+  echo "  $RUNNER $DEST/scripts/cqlsearch.py text 'detector calibration' --limit 5"
+fi

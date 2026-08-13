@@ -22,10 +22,15 @@ token is the one thing you do need; see **Auth** below.)
 
 ```bash
 CQL="$SKILL_DIR/scripts/cqlsearch.py"                 # see below
-uv run "$CQL" text "detector calibration" --limit 5   # preferred; pins python>=3.9
-"$CQL"        text "detector calibration" --limit 5   # shebang runs it through uv
-python3 "$CQL" text "detector calibration" --limit 5  # fallback, no uv present
+uv run --script "$CQL" text "detector calibration"    # preferred
+"$CQL"          text "detector calibration"           # shebang runs it through uv
+python3 "$CQL"  text "detector calibration"           # only if python3 is >= 3.9
 ```
+
+**Use `uv` unless you know the local `python3` is 3.9 or newer.** The script
+declares `requires-python = ">=3.9"` and uv provisions that automatically; the
+system python on SLAC login nodes is 3.6 and cannot parse the file at all
+(`SyntaxError: future feature annotations is not defined`).
 
 `$SKILL_DIR` is the directory holding this `SKILL.md`. When installed with the
 repo's `install.sh` that is `~/.claude/skills/confluence-search`:
