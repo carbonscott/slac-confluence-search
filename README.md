@@ -24,13 +24,23 @@ confluence-search/
 │   ├── counts.py                 live coverage vs the ETL database
 │   ├── archived.py               why the counts differ
 │   └── *-result.txt              captured output of each run
-└── skills/confluence-search/     ← the Claude agent skill
-    ├── SKILL.md
-    ├── reference/cql-cheatsheet.md
-    └── scripts/
-        ├── cqlsearch.py          the implementation
-        └── confluence-login      each user installs their own token
+├── claude/skills/confluence-search/    ← for local Claude Code users
+│   ├── SKILL.md
+│   ├── reference/cql-cheatsheet.md
+│   └── scripts/
+│       ├── cqlsearch.py               the implementation
+│       └── confluence-login           each user installs their own token
+└── opencode/skills/confluence-search/  ← deployed to the shared opencode tree
+    └── (byte-identical copy of the above)
 ```
+
+`claude/` and `opencode/` hold **identical, duplicated** content. That is the
+convention the LCLS `deploy-opencode` manifest expects: its `deploy.sh` rsyncs
+`opencode/skills/<name>/` into
+`/sdf/group/lcls/ds/dm/apps/dev/opencode/skills/<name>/`, while Claude Code
+users deploy the `claude/` side. Duplication was chosen over a shared root, so
+**any edit must be applied to both trees**; `diff -r` between them should be
+empty before you commit.
 
 ## CQL documentation (downloaded here)
 
@@ -56,7 +66,7 @@ venv, a `pip install`, or a `requirements.txt`:
 ```bash
 uv run docs/html2md.py                 # deps declared inline, fetched on demand
 uv run experiments/probe.py            # stdlib only
-./skills/confluence-search/scripts/cqlsearch.py spaces   # shebang → uv
+./claude/skills/confluence-search/scripts/cqlsearch.py spaces   # shebang → uv
 ```
 
 | Script | `dependencies` |
@@ -83,15 +93,27 @@ cannot be done for them — results are filtered by their own permissions.
 ~/.claude/skills/confluence-search/scripts/confluence-login   # 2. your token
 ```
 
-**`install.sh` deploys and nothing else.** It links `skills/confluence-search/`
-into your skills directory and never touches a credential.
+**`install.sh` deploys and nothing else.** It puts
+`claude/skills/confluence-search/` into your skills directory and never touches
+a credential.
 
 | Flag | Effect |
 |---|---|
-| `--copy` | copy instead of symlinking, for hosts that can't follow the link |
+| `--copy` / `--symlink` | force one mode; see the default rule below |
 | `--dir DIR` | a skills directory other than `~/.claude/skills` |
-| `--force` | replace an existing entry at the destination |
+| `--force` | replace an existing entry that isn't ours |
 | `--uninstall` | remove the deployed skill (your token is left alone) |
+
+**Symlink or copy is chosen from the destination.** Under your home directory it
+symlinks, so a `git pull` in the clone updates you immediately. Anywhere else it
+copies, and says why: a symlink in a shared multi-user tree points back into one
+person's clone, which everyone else is usually unable to read. Copies are also
+made group-readable, since an inherited `umask 027` otherwise produces a
+directory the group cannot enter. Re-running refreshes our own copy without
+`--force`; only a directory that isn't ours needs it.
+
+For the LCLS shared opencode tree, prefer the manifest and `deploy.sh` over
+this script — it handles group ownership and the `agents/` symlink as well.
 
 `docs/` and `experiments/` stay in the clone; it refuses to clobber an unrelated
 existing entry unless you pass `--force`.
