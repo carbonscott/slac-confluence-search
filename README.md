@@ -151,6 +151,10 @@ resolution would eventually write where the search command does not read.
 Every user needs their own — search results are filtered by **your** Confluence
 permissions, so this is not a credential anyone can share with you.
 
+**[docs/token-setup/getting-a-token.md](docs/token-setup/getting-a-token.md)** is
+the illustrated walkthrough — send that to users rather than explaining it each
+time.
+
 Mint one in a browser at
 [Profile → Settings → Personal Access Tokens](https://confluence.slac.stanford.edu/plugins/personalaccesstokens/usertokens.action),
 set an expiry, and paste it when `confluence-login` asks. The prompt does not
