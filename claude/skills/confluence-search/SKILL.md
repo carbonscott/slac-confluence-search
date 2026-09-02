@@ -21,6 +21,7 @@ metadata and uses only the standard library, so all three of these work. (A
 token is the one thing you do need; see **Auth** below.)
 
 ```bash
+SKILL_DIR=~/.claude/skills/confluence-search          # wherever this SKILL.md lives
 source "$SKILL_DIR/env.sh"                            # puts the shared uv on PATH
 CQL="$SKILL_DIR/scripts/cqlsearch.py"                 # see below
 uv run --script "$CQL" text "detector calibration"    # preferred
