@@ -21,11 +21,18 @@ metadata and uses only the standard library, so all three of these work. (A
 token is the one thing you do need; see **Auth** below.)
 
 ```bash
+source "$SKILL_DIR/env.sh"                            # puts the shared uv on PATH
 CQL="$SKILL_DIR/scripts/cqlsearch.py"                 # see below
 uv run --script "$CQL" text "detector calibration"    # preferred
 "$CQL"          text "detector calibration"           # shebang runs it through uv
 python3 "$CQL"  text "detector calibration"           # only if python3 is >= 3.9
 ```
+
+Source `env.sh` in the *same* bash command as the script — each command runs in a
+fresh shell, so a `source` from an earlier one is already gone. It puts the
+facility's shared `uv` on `PATH` (S3DF `/sdf/group/lcls/ds/dm/apps/dev/bin`, OLCF
+`/ccs/home/cwang31/.local/bin`) and sets a per-user uv cache, so these commands
+work without a personal `~/.local/bin/uv`.
 
 **Use `uv` unless you know the local `python3` is 3.9 or newer.** The script
 declares `requires-python = ">=3.9"` and uv provisions that automatically; the
