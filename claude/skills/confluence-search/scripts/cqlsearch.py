@@ -54,6 +54,14 @@ SELF = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else "cqlsearch.
 _WRAPPER = os.path.join(os.path.dirname(SELF), "confluence-login")
 LOGIN_CMD = _WRAPPER if os.path.exists(_WRAPPER) else f"{SELF} login"
 
+# `whoami` as a command the USER pastes into their own terminal, right after
+# confluence-login. That shell usually has no uv on PATH: confluence-login
+# sources env.sh for itself, and that does not outlive it. So name env.sh
+# explicitly, and wrap it in `bash -c` so it also works from tcsh or zsh.
+_ENV_SH = os.path.join(os.path.dirname(os.path.dirname(SELF)), "env.sh")
+WHOAMI_CMD = (f"bash -c 'source \"{_ENV_SH}\" && \"{SELF}\" whoami'"
+              if os.path.exists(_ENV_SH) else f"{SELF} whoami")
+
 
 def home_dir() -> str:
     """The invoking user's home.
@@ -488,7 +496,8 @@ def cmd_login(args) -> int:
         print(f"\nwarning: {TOKEN_FILE} was written, but the check above failed.\n"
               f"         The token may be wrong (a truncated paste is the usual\n"
               f"         cause) — or this instance rate-limited the check; it\n"
-              f"         does that readily. Try `{SELF} whoami` in a minute.",
+              f"         does that readily. Try this in a minute:\n"
+              f"           {WHOAMI_CMD}",
               file=sys.stderr)
         return 1
     print()
