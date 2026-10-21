@@ -47,12 +47,20 @@ Run `confluence-login` and paste it at the prompt. It is not on your `PATH`; the
 path depends on where the skill was deployed:
 
 ```bash
-# shared opencode install on S3DF
+# claude-lcls on S3DF
+~/.claude-lcls/skills/confluence-search/scripts/confluence-login
+
+# shared opencode install on S3DF (opencode-sandbox included)
 /sdf/group/lcls/ds/dm/apps/dev/opencode/skills/confluence-search/scripts/confluence-login
 
 # your own Claude Code
 ~/.claude/skills/confluence-search/scripts/confluence-login
 ```
+
+Run it in a normal terminal. It needs no `uv` on your `PATH` and no setup line
+first: it loads the facility's shared `uv` itself. If you use opencode-sandbox,
+run it outside the sandbox, then restart `opencode-sandbox`, which copies the
+token in only when it starts.
 
 Input is hidden. The token is saved to `~/.config/confluence-search/token` with
 mode 600, and one live call confirms it works:
@@ -96,8 +104,10 @@ install it over the old one:
 **Check who you are** at any time:
 
 ```bash
-<skill-dir>/scripts/cqlsearch.py whoami
+source <skill-dir>/env.sh && <skill-dir>/scripts/cqlsearch.py whoami
 ```
+
+(`env.sh` puts the shared `uv` on `PATH`; `cqlsearch.py` runs through it.)
 
 ---
 

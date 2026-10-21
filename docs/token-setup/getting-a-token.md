@@ -78,15 +78,24 @@ the way.
 path depends on where the skill was deployed for you:
 
 ```bash
+# claude-lcls on S3DF
+~/.claude-lcls/skills/confluence-search/scripts/confluence-login
+
 # a personal Claude Code install
 ~/.claude/skills/confluence-search/scripts/confluence-login
 
-# the shared LCLS opencode install on S3DF
+# the shared LCLS opencode install on S3DF (opencode-sandbox included)
 /sdf/group/lcls/ds/dm/apps/dev/opencode/skills/confluence-search/scripts/confluence-login
 ```
 
-Both are the same program. If you use both tools, you still install the token
-only once — it goes to a single per-user file, not into either skill directory.
+All of them are the same program. If you use more than one tool, you still
+install the token only once — it goes to a single per-user file, not into any
+skill directory.
+
+Run it in a normal terminal. You do not need `uv` on your `PATH` or any setup
+line first: `confluence-login` loads the facility's shared `uv` itself. If you
+use opencode-sandbox, run it outside the sandbox and then restart
+`opencode-sandbox`: the sandbox copies the token in only when it starts.
 
 If you would rather type a short command, link it onto your `PATH` once:
 
